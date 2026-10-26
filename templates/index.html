@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>GitMaster OS</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap');
+        body { font-family: 'Vazirmatn', sans-serif; background: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: auto; }
+        .header { text-align: center; margin-bottom: 20px; } .header h1 { color: #58a6ff; margin: 0; }
+        .tabs { display: flex; border-bottom: 2px solid #30363d; margin-bottom: 20px; }
+        .tab { padding: 10px 20px; cursor: pointer; background: #161b22; border-radius: 8px 8px 0 0; margin-right: 5px; border: 1px solid #30363d; border-bottom: none; color: #8b949e; }
+        .tab.active { background: #238636; color: white; font-weight: bold; border-color: #238636; }
+        .content { display: none; background: #161b22; padding: 20px; border-radius: 0 0 8px 8px; border: 1px solid #30363d; }
+        .content.active { display: block; }
+        button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-family: inherit; margin: 5px 0; }
+        button:hover { background: #30363d; } .btn-primary { background: #238636; border-color: #238636; color: white; }
+        input, select { width: 100%; padding: 10px; margin: 10px 0; border-radius: 5px; border: 1px solid #30363d; background: #0d1117; color: white; box-sizing: border-box;}
+        .alert { padding: 10px; margin-top: 10px; border-radius: 5px; background: #161b22; border-right: 4px solid #238636; }
+        .alert.err { border-right-color: #da3633; }
+        .folder-list { max-height: 350px; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 5px; padding: 5px; }
+        .folder-item { padding: 10px; border-bottom: 1px solid #30363d; cursor: pointer; display: flex; justify-content: space-between; }
+        .folder-item:hover { background: #161b22; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header"><h1>🚀 GitMaster OS</h1></div>
+        <div class="tabs">
+            <div class="tab active" onclick="openTab('github', this)">🌐 گیت‌هاب</div>
+            <div class="tab" onclick="openTab('local', this)">📂 حافظه گوشی</div>
+            <div class="tab" onclick="openTab('settings', this)">⚙️ تنظیمات</div>
+        </div>
+        <div id="github" class="content active">
+            <label>انتخاب ریپو:</label><select id="repoList"><option>در حال بارگذاری...</option></select>
+            <div><button class="btn-primary" onclick="gitAction('clone')">⬇️ کلون</button><button onclick="gitAction('pull')">🔄 Pull</button><button onclick="gitAction('push')">⬆️ Push</button></div>
+            <div id="msgGithub" class="alert" style="display:none;"></div>
+        </div>
+        <div id="local" class="content">
+            <div style="display:flex; justify-content:space-between;"><p id="currentPathLabel">مسیر فعلی: /sdcard</p><button onclick="loadDirs('')">🏠 بازگشت</button></div>
+            <div class="folder-list" id="localDirsList"></div><div id="msgLocal" class="alert" style="display:none;"></div>
+        </div>
+        <div id="settings" class="content">
+            <label>توکن گیت‌هاب:</label><input type="password" id="tokenInput" placeholder="ghp_..."><button class="btn-primary" onclick="saveToken()">💾 ذخیره توکن</button><div id="msgSettings" class="alert" style="display:none;"></div>
+        </div>
+    </div>
+    <script>
+        function openTab(tabName, el) {
+            document.querySelectorAll('.content').forEach(c => c.classList.remove('active')); document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active'); el.classList.add('active');
+            if(tabName === 'github') loadRepos(); if(tabName === 'local') loadDirs('');
+        }
+        async function loadRepos() {
+            const res = await fetch('/api/repos'); const data = await res.json(); const select = document.getElementById('repoList');
+            if(data.error) { select.innerHTML = `<option>${data.error}</option>`; return; }
+            select.innerHTML = data.length ? data.map(r => `<option value="${r}">${r}</option>`).join('') : '<option>ریپویی یافت نشد</option>';
+        }
+        async function loadDirs(path) {
+            const list = document.getElementById('localDirsList'); list.innerHTML = 'در حال بارگذاری...';
+            const res = await fetch(`/api/local_dirs?path=${encodeURIComponent(path)}`); const data = await res.json();
+            if(data.error) { list.innerHTML = `<div style="color:#da3633">${data.error}</div>`; return; }
+            document.getElementById('currentPathLabel').innerText = 'مسیر فعلی: ' + data.current_path; list.innerHTML = '';
+            if(data.current_path !== '/' && data.current_path !== '/sdcard') {
+                let parts = data.current_path.split('/'); parts.pop();
+                let upDiv = document.createElement('div'); upDiv.className = 'folder-item'; upDiv.innerHTML = '<span>⬆️ .. (بازگشت)</span>';
+                upDiv.onclick = () => loadDirs(parts.join('/') || '/'); list.appendChild(upDiv);
+            }
+            data.dirs.forEach(d => {
+                let div = document.createElement('div'); div.className = 'folder-item';
+                div.innerHTML = `<span>📁 ${d.name}</span> <button onclick="event.stopPropagation(); runLocal('${d.path}')" style="font-size:0.7em; padding:2px 6px;">▶ اجرا</button>`;
+                div.onclick = () => loadDirs(d.path); list.appendChild(div);
+            });
+        }
+        async function runLocal(path) {
+            const msg = document.getElementById('msgLocal'); msg.style.display = 'block'; msg.innerText = 'در حال اجرا...'; msg.className = 'alert';
+            const res = await fetch('/api/run', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: path}) }); const data = await res.json();
+            if(data.error) { msg.innerText = data.error; msg.className = 'alert err'; } else { msg.innerText = data.msg; if(data.url) window.open(data.url, '_blank'); }
+        }
+        async function gitAction(action) {
+            const repo = document.getElementById('repoList').value; if(!repo || repo.includes('در حال') || repo.includes('یافت')) return;
+            const msgBox = document.getElementById('msgGithub'); msgBox.style.display = 'block'; msgBox.innerText = 'در حال پردازش...'; msgBox.className = 'alert';
+            const res = await fetch('/api/git', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: action, repo: repo}) }); const data = await res.json();
+            msgBox.innerText = data.msg || data.error; msgBox.className = data.error ? 'alert err' : 'alert';
+        }
+        async function saveToken() {
+            const token = document.getElementById('tokenInput').value;
+            const res = await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: token}) }); const data = await res.json();
+            const msgBox = document.getElementById('msgSettings'); msgBox.style.display = 'block'; msgBox.innerText = data.msg; loadRepos();
+        }
+        loadRepos();
+    </script>
+</body>
+</html>
